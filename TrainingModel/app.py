@@ -107,6 +107,8 @@ def cached_test_predictions(
             + ", ".join(sorted(missing_columns))
         )
     predictions["timestamp"] = pd.to_datetime(predictions["timestamp"], errors="raise")
+    if predictions["timestamp"].dt.tz is not None:
+        predictions["timestamp"] = predictions["timestamp"].dt.tz_localize(None)
     predictions["patient_id"] = predictions["patient_id"].astype(str)
     return predictions
 
@@ -162,6 +164,8 @@ def cached_supabase_predictions(url: str, key: str) -> pd.DataFrame:
             "Please run `python train_from_supabase.py` first."
         )
     df["timestamp"] = pd.to_datetime(df["timestamp"])
+    if df["timestamp"].dt.tz is not None:
+        df["timestamp"] = df["timestamp"].dt.tz_localize(None)
     df["patient_id"] = df["patient_id"].astype(str)
     return df
 
@@ -503,23 +507,25 @@ with forecast_area:
         )
 
     if not patient_test_predictions.empty:
+        test_ts = patient_test_predictions["timestamp"]
+        if test_ts.dt.tz is not None:
+            test_ts = test_ts.dt.tz_localize(None)
+
+        train_ts = patient_training_predictions["timestamp"] if not patient_training_predictions.empty else pd.Series(dtype="datetime64[ns]")
+        if not train_ts.empty and train_ts.dt.tz is not None:
+            train_ts = train_ts.dt.tz_localize(None)
+
+        val_ts = patient_validation_predictions["timestamp"] if not patient_validation_predictions.empty else pd.Series(dtype="datetime64[ns]")
+        if not val_ts.empty and val_ts.dt.tz is not None:
+            val_ts = val_ts.dt.tz_localize(None)
+
+        all_mins = [s.min() for s in (train_ts, val_ts) if not s.empty]
+        earliest_time = min(all_mins) if all_mins else test_ts.min()
+        x_min = min(test_ts.min(), earliest_time)
         chart.update_xaxes(
             range=[
-                min(
-                    patient_test_predictions["timestamp"].min(),
-                    min(
-                        [
-                            series.min()
-                            for series in (
-                                patient_training_predictions["timestamp"],
-                                patient_validation_predictions["timestamp"],
-                            )
-                            if not series.empty
-                        ]
-                        or [patient_test_predictions["timestamp"].min()]
-                    ),
-                ),
-                patient_test_predictions["timestamp"].max(),
+                x_min,
+                test_ts.max(),
             ]
         )
     add_glucose_risk_lines(chart)
