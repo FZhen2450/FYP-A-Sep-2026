@@ -633,7 +633,27 @@ def load_forecaster_checkpoint(
         )
 
     device = torch.device(device_name)
-    checkpoint = torch.load(path, map_location=device, weights_only=True)
+    try:
+        checkpoint = torch.load(path, map_location=device, weights_only=False)
+    except Exception:
+        checkpoint = torch.load(path, map_location=device)
+
+    # Normalize checkpoint keys for cross-version compatibility
+    if "model_state_dict" not in checkpoint and "state_dict" in checkpoint:
+        checkpoint["model_state_dict"] = checkpoint["state_dict"]
+    if "feature_columns" not in checkpoint:
+        checkpoint["feature_columns"] = list(FEATURE_COLUMNS)
+    if "target_delta_mean" not in checkpoint and "delta_mean" in checkpoint:
+        checkpoint["target_delta_mean"] = checkpoint["delta_mean"]
+    if "target_delta_scale" not in checkpoint and "delta_scale" in checkpoint:
+        checkpoint["target_delta_scale"] = checkpoint["delta_scale"]
+    if "model_config" not in checkpoint:
+        checkpoint["model_config"] = {
+            "input_dim": len(FEATURE_COLUMNS),
+            "hidden_dim": int(checkpoint.get("hidden_dim", 64)),
+            "num_layers": 2,
+            "dropout": 0.15,
+        }
     if list(checkpoint.get("feature_columns", ())) != list(FEATURE_COLUMNS):
         raise ValueError("Checkpoint feature columns do not match the FYP_A_new pipeline.")
     config = checkpoint.get("model_config", {})

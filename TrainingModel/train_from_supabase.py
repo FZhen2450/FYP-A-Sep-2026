@@ -300,18 +300,31 @@ def train_on_supabase_timelines(
 
     output_dir.mkdir(parents=True, exist_ok=True)
     checkpoint_path = output_dir / "gru_t2dm_forecaster.pt"
-    torch.save(
-        {
-            "state_dict": model.state_dict(),
-            "feature_mean": feature_mean,
-            "feature_scale": feature_scale,
-            "delta_mean": delta_mean,
-            "delta_scale": delta_scale,
+    checkpoint_data = {
+        "model_state_dict": {k: v.detach().cpu().clone() for k, v in model.state_dict().items()},
+        "state_dict": {k: v.detach().cpu().clone() for k, v in model.state_dict().items()},
+        "model_config": {
+            "input_dim": len(FEATURE_COLUMNS),
             "hidden_dim": hidden_dim,
-            "sequence_length": sequence_length,
+            "num_layers": 2,
+            "dropout": 0.15,
         },
-        checkpoint_path,
-    )
+        "feature_columns": list(FEATURE_COLUMNS),
+        "sequence_length": sequence_length,
+        "feature_mean": [float(x) for x in feature_mean],
+        "feature_scale": [float(x) for x in feature_scale],
+        "target_delta_mean": float(delta_mean),
+        "target_delta_scale": float(delta_scale),
+        "delta_mean": float(delta_mean),
+        "delta_scale": float(delta_scale),
+        "hidden_dim": hidden_dim,
+        "summary": test_metrics,
+        "test_metrics": test_metrics,
+    }
+    torch.save(checkpoint_data, checkpoint_path)
+    for model_copy_dir in [PROJECT_DIR.parent / "models" / "training", PROJECT_DIR.parent / "models" / "weights"]:
+        model_copy_dir.mkdir(parents=True, exist_ok=True)
+        torch.save(checkpoint_data, model_copy_dir / "gru_t2dm_forecaster.pt")
     print(f"Local model checkpoint saved: {checkpoint_path}")
 
     prediction_frame = pd.DataFrame(
